@@ -1,0 +1,2 @@
+-- Insert a default admin user profile (this will be created after the first admin signs up)
+-- This is just a placeholder - the actual admin will be created through the signup process
