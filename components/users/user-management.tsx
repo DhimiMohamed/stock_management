@@ -27,9 +27,10 @@ type User = {
   username: string
   email: string
   role: string
-  isActive: boolean
+  is_active: boolean
   lastLogin?: string
 }
+
 export function UserManagement() {
   const [users, setUsers] = useState<User[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -38,12 +39,13 @@ export function UserManagement() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [formData, setFormData] = useState({
     username: "",
     email: "",
     password: "",
     role: "user" as "admin" | "user",
-    isActive: true,
+    is_active: true,
   })
 
   useEffect(() => {
@@ -65,10 +67,121 @@ export function UserManagement() {
     }
   }
 
-  // You can implement user creation via Supabase here if needed
-  const handleCreateUser = async () => {
-    setError("Création d'utilisateur non implémentée côté Supabase.")
+  const validateForm = () => {
+    if (!formData.username.trim()) {
+      setError("Le nom d'utilisateur est requis")
+      return false
+    }
+    if (!formData.email.trim()) {
+      setError("L'email est requis")
+      return false
+    }
+    if (!formData.password.trim()) {
+      setError("Le mot de passe est requis")
+      return false
+    }
+    if (formData.password.length < 6) {
+      setError("Le mot de passe doit contenir au moins 6 caractères")
+      return false
+    }
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(formData.email)) {
+      setError("Format d'email invalide")
+      return false
+    }
+    return true
   }
+
+  const handleCreateUser = async () => {
+  if (!validateForm()) return
+
+  setIsSubmitting(true)
+  setError("")
+  
+  try {
+    const supabase = createBrowserClient()
+    
+    // Check if username already exists in your custom users table
+    const { data: existingUsers, error: checkError } = await supabase
+      .from('users')
+      .select('username')
+      .eq('username', formData.username)
+    
+    if (checkError) throw checkError
+    
+    if (existingUsers && existingUsers.length > 0) {
+      setError("Ce nom d'utilisateur existe déjà")
+      return
+    }
+
+    // Step 1: Create the authentication user using Supabase Auth
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: formData.email.trim().toLowerCase(),
+      password: formData.password,
+      options: {
+        data: {
+          username: formData.username.trim(),
+          role: formData.role,
+        }
+      }
+    })
+
+    if (authError) {
+      // Handle specific auth errors
+      if (authError.message.includes('already registered')) {
+        setError("Cet email est déjà utilisé")
+      } else {
+        setError(authError.message || "Erreur lors de la création du compte")
+      }
+      return
+    }
+
+    if (!authData.user) {
+      setError("Erreur lors de la création du compte utilisateur")
+      return
+    }
+
+    // Step 2: Create the user record in your custom users table
+    const userData = {
+      id: authData.user.id, // Use the auth user's ID
+      username: formData.username.trim(),
+      email: formData.email.trim().toLowerCase(),
+      role: formData.role,
+      is_active: formData.is_active,
+      created_at: new Date().toISOString()
+    }
+
+    const { data: userRecord, error: userError } = await supabase
+      .from('users')
+      .insert([userData])
+      .select()
+      .single()
+
+    if (userError) {
+      // If user table creation fails, we should delete the auth user
+      // Note: This requires admin privileges or RLS policies that allow it
+      console.error("Failed to create user record, auth user created:", userError)
+      setError("Erreur lors de la création des données utilisateur")
+      return
+    }
+
+    // Add the new user to the local state
+    setUsers(prevUsers => [...prevUsers, userRecord])
+    
+    // Reset form and close dialog
+    resetForm()
+    setIsCreateDialogOpen(false)
+    
+    console.log("Utilisateur créé avec succès:", userRecord)
+    
+  } catch (err: any) {
+    console.error("Error creating user:", err)
+    setError(err.message || "Erreur lors de la création de l'utilisateur")
+  } finally {
+    setIsSubmitting(false)
+  }
+}
 
   // You can implement user update via Supabase here if needed
   const handleUpdateUser = async () => {
@@ -86,9 +199,10 @@ export function UserManagement() {
       email: "",
       password: "",
       role: "user",
-      isActive: true,
+      is_active: true,
     })
     setSelectedUser(null)
+    setError("")
   }
 
   const openEditDialog = (user: User) => {
@@ -98,7 +212,7 @@ export function UserManagement() {
       email: user.email,
       password: "",
       role: user.role as "user" | "admin",
-      isActive: user.isActive,
+      is_active: user.is_active,
     })
     setIsEditDialogOpen(true)
   }
@@ -126,7 +240,10 @@ export function UserManagement() {
           </h1>
           <p className="text-muted-foreground">Gérez les comptes utilisateurs et leurs permissions</p>
         </div>
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <Dialog open={isCreateDialogOpen} onOpenChange={(open) => {
+          setIsCreateDialogOpen(open)
+          if (!open) resetForm()
+        }}>
           <DialogTrigger asChild>
             <Button className="bg-primary hover:bg-primary/90 text-primary-foreground">
               <Plus className="h-4 w-4 mr-2" />
@@ -157,6 +274,7 @@ export function UserManagement() {
                     value={formData.username}
                     onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                     className="pl-10"
+                    disabled={isSubmitting}
                   />
                 </div>
               </div>
@@ -171,6 +289,7 @@ export function UserManagement() {
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     className="pl-10"
+                    disabled={isSubmitting}
                   />
                 </div>
               </div>
@@ -185,6 +304,7 @@ export function UserManagement() {
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     className="pl-10"
+                    disabled={isSubmitting}
                   />
                 </div>
               </div>
@@ -193,6 +313,7 @@ export function UserManagement() {
                 <Select
                   value={formData.role}
                   onValueChange={(value: "admin" | "user") => setFormData({ ...formData, role: value })}
+                  disabled={isSubmitting}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -206,18 +327,27 @@ export function UserManagement() {
               <div className="flex items-center space-x-2">
                 <Switch
                   id="create-active"
-                  checked={formData.isActive}
-                  onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
+                  checked={formData.is_active}
+                  onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+                  disabled={isSubmitting}
                 />
                 <Label htmlFor="create-active">Compte actif</Label>
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+              <Button 
+                variant="outline" 
+                onClick={() => setIsCreateDialogOpen(false)}
+                disabled={isSubmitting}
+              >
                 Annuler
               </Button>
-              <Button onClick={handleCreateUser} className="bg-primary hover:bg-primary/90">
-                Créer
+              <Button 
+                onClick={handleCreateUser} 
+                className="bg-primary hover:bg-primary/90"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? "Création..." : "Créer"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -254,8 +384,8 @@ export function UserManagement() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={user.isActive ? "default" : "destructive"}>
-                      {user.isActive ? "Actif" : "Inactif"}
+                    <Badge variant={user.is_active ? "default" : "destructive"}>
+                      {user.is_active ? "Actif" : "Inactif"}
                     </Badge>
                   </TableCell>
                   <TableCell>
@@ -356,8 +486,8 @@ export function UserManagement() {
             <div className="flex items-center space-x-2">
               <Switch
                 id="edit-active"
-                checked={formData.isActive}
-                onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
+                checked={formData.is_active}
+                onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
               />
               <Label htmlFor="edit-active">Compte actif</Label>
             </div>

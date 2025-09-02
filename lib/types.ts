@@ -15,8 +15,6 @@ export interface Product {
   categoryId: string
   category?: Category
   unitPrice: number
-  // actualStock: number
-  // minStock: number
   createdAt: Date
   updatedAt: Date
 }

@@ -1,3 +1,4 @@
+// app\users\page.tsx
 import { UserManagement } from "@/components/users/user-management"
 import { ProtectedRoute } from "@/components/auth/protected-route"
 

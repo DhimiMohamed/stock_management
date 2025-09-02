@@ -82,9 +82,9 @@ export async function addProduct(product: Omit<Product, "id" | "createdAt" | "up
       name: product.name,
       description: product.description,
       category_id: product.categoryId,
-      unit_price: product.unitPrice,
-      min_stock: product.minStock,
-      actual_stock: product.actualStock || 0
+      unit_price: product.unitPrice
+      // min_stock: product.minStock,
+      // actual_stock: product.actualStock || 0
     }])
     .select(`
       *,
@@ -105,8 +105,8 @@ export async function updateProduct(id: string, updates: Partial<Omit<Product, "
   if (updates.description) dbUpdates.description = updates.description
   if (updates.categoryId) dbUpdates.category_id = updates.categoryId
   if (updates.unitPrice) dbUpdates.unit_price = updates.unitPrice
-  if (updates.minStock !== undefined) dbUpdates.min_stock = updates.minStock
-  if (updates.actualStock !== undefined) dbUpdates.actual_stock = updates.actualStock
+  // if (updates.minStock !== undefined) dbUpdates.min_stock = updates.minStock
+  // if (updates.actualStock !== undefined) dbUpdates.actual_stock = updates.actualStock
 
   const { data, error } = await supabase
     .from('products')
@@ -280,8 +280,8 @@ export async function createProductWithStock(
       description: productData.description,
       category_id: productData.categoryId,
       unit_price: productData.unitPrice,
-      min_stock: productData.minStock,
-      actual_stock: initialStock
+      // min_stock: productData.minStock,
+      // actual_stock: initialStock
     }])
     .select(`
       *,

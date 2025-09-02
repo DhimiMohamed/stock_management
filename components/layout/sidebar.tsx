@@ -1,4 +1,3 @@
-// components\layout\sidebar.tsx
 "use client"
 
 import { useState, useMemo, useCallback } from "react"
@@ -44,7 +43,7 @@ type SidebarContentProps = {
   allNavigation: NavigationItem[]
   pathname: string
   onLinkClick: () => void
-  session: any // Replace with your actual session type
+  user: any // Using the user object from Supabase auth
   isAdmin: boolean
   logout: () => void
 }
@@ -92,7 +91,7 @@ const adminNavigation: NavigationItem[] = [
 ]
 
 // Extract SidebarContent as a separate component
-function SidebarContent({ allNavigation, pathname, onLinkClick, session, isAdmin, logout }: SidebarContentProps) {
+function SidebarContent({ allNavigation, pathname, onLinkClick, user, isAdmin, logout }: SidebarContentProps) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-14 items-center border-b px-4">
@@ -123,26 +122,26 @@ function SidebarContent({ allNavigation, pathname, onLinkClick, session, isAdmin
         })}
       </nav>
 
-      {session && (
+      {user && (
         <div className="border-t p-4">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="w-full justify-start gap-3 h-auto p-3">
                 <Avatar className="h-8 w-8">
                   <AvatarFallback className="bg-primary text-primary-foreground text-sm">
-                    {session.user.username.charAt(0).toUpperCase()}
+                    {user.email?.charAt(0).toUpperCase() || "U"}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1 text-left">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{session.user.username}</span>
+                    <span className="text-sm font-medium">{user.email?.split('@')[0] || "Utilisateur"}</span>
                     {isAdmin && (
                       <Badge variant="secondary" className="text-xs">
                         Admin
                       </Badge>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground">{session.user.email}</p>
+                  <p className="text-xs text-muted-foreground">{user.email}</p>
                 </div>
                 <ChevronDown className="h-4 w-4" />
               </Button>
@@ -174,7 +173,7 @@ function SidebarContent({ allNavigation, pathname, onLinkClick, session, isAdmin
 export function Sidebar() {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
-  const { session, logout, isAdmin } = useAuth()
+  const { user, logout, isAdmin } = useAuth()
 
   // Memoize navigation array to prevent recreation
   const allNavigation = useMemo(
@@ -195,7 +194,7 @@ export function Sidebar() {
           allNavigation={allNavigation}
           pathname={pathname}
           onLinkClick={handleLinkClick}
-          session={session}
+          user={user}
           isAdmin={isAdmin}
           logout={logout}
         />
@@ -214,7 +213,7 @@ export function Sidebar() {
             allNavigation={allNavigation}
             pathname={pathname}
             onLinkClick={handleLinkClick}
-            session={session}
+            user={user}
             isAdmin={isAdmin}
             logout={logout}
           />

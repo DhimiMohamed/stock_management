@@ -131,22 +131,9 @@ export function ProductTable({ onAddStock }: ProductTableProps) {
   // ✅ Show stock weekly view if product is selected
   if (selectedProduct) {
     return (
-      // <Card>
-      //   <CardHeader>
-      //     <div className="flex items-center justify-between">
-      //       <CardTitle className="flex items-center gap-2">
-      //         <BarChart className="h-5 w-5" />
-      //         Stock hebdomadaire – {selectedProduct.name}
-      //       </CardTitle>
-      //       <Button variant="outline" onClick={() => setSelectedProduct(null)}>
-      //         ← Retour aux produits
-      //       </Button>
-      //     </div>
-      //   </CardHeader>
-      //   <CardContent>
+      
           <StockWeeklyView product={selectedProduct} onBack={handleBackFromWeekly}/>
-      //   </CardContent>
-      // </Card>
+      
     )
   }
 

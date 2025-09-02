@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -10,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Eye, EyeOff, Lock, Mail, AlertCircle } from "lucide-react"
-import { createBrowserClient } from "@/lib/supabase/client"
+import { useAuth } from "./auth-context"
 
 export function SupabaseLoginForm() {
   const [email, setEmail] = useState("")
@@ -19,7 +18,7 @@ export function SupabaseLoginForm() {
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
-  const supabase = createBrowserClient()
+  const { login } = useAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -27,22 +26,11 @@ export function SupabaseLoginForm() {
     setIsLoading(true)
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
-      if (error) {
-        setError(error.message)
-        return
-      }
-
-      if (data.user) {
-        router.push("/")
-        router.refresh()
-      }
-    } catch (err) {
-      setError("Une erreur est survenue lors de la connexion")
+      await login(email, password)
+      router.push("/")
+      router.refresh()
+    } catch (err: any) {
+      setError(err.message || "Une erreur est survenue lors de la connexion")
     } finally {
       setIsLoading(false)
     }
