@@ -50,9 +50,9 @@ export default function StockPage() {
               }}
             />
           </div>
-          <div className="lg:col-span-1">
+          {/* <div className="lg:col-span-1">
             <StockAlerts />
-          </div>
+          </div> */}
         </div>
       </div>
     </ProtectedRoute>
