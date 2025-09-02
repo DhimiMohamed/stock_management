@@ -16,24 +16,23 @@ export interface Product {
   categoryId: string
   category?: Category
   unitPrice: number
+  actualStock: number
   minStock: number
   createdAt: Date
   updatedAt: Date
 }
 
 export interface StockEntry {
-  id: string
-  productId: string
-  product?: Product
-  date: Date
-  quantityIn: number
-  quantityOut: number
-  currentStock: number
-  unitPrice: number
-  totalValue: number
-  notes?: string
-  createdAt: Date
-  updatedAt: Date
+  id: string;
+  productId: string;
+  product?: Product;
+  date: Date;
+  quantityIn: number;
+  quantityOut: number;
+  currentStock: number;
+  notes?: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface FinancialSummary {

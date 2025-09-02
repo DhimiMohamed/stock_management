@@ -4,7 +4,7 @@ import type React from "react"
 
 import { useState } from "react"
 import type { Product } from "@/lib/types"
-import { dataService } from "@/lib/data-service"
+import { getStockEntries, addStockEntry } from "@/lib/data-service"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -43,7 +43,7 @@ export function StockMovementForm({ products, onMovementAdded }: StockMovementFo
       const unitPrice = Number.parseFloat(formData.unitPrice)
 
       // Get current stock
-      const stockEntries = await dataService.getStockEntries()
+      const stockEntries = await getStockEntries()
       const currentEntry = stockEntries
         .filter((entry) => entry.productId === formData.productId)
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
@@ -51,8 +51,8 @@ export function StockMovementForm({ products, onMovementAdded }: StockMovementFo
       const currentStock = currentEntry?.currentStock || 0
       const newStock = formData.type === "in" ? currentStock + quantity : Math.max(0, currentStock - quantity)
 
-      // Create stock entry
-      await dataService.createStockEntry({
+      // Create stock entry in Supabase
+      await addStockEntry({
         productId: formData.productId,
         date: new Date(),
         quantityIn: formData.type === "in" ? quantity : 0,

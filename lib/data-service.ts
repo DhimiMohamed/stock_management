@@ -1,452 +1,401 @@
 // lib\data-service.ts
-import type { Category, Product, StockEntry, StockMovement, DashboardStats, FinancialSummary } from "./types"
-import { mockProducts, mockStockEntries, mockStockMovements } from "./mock-data"
+
+import type { Category, Product, StockEntry } from "./types"
 import createClient from "./supabase/client"
 
-class DataService {
-  private supabase = createClient()
+const supabase = createClient()
+
+// Categories (already migrated and working)
+export async function getCategories(): Promise<Category[]> {
+  const { data, error } = await supabase
+    .from('categories')
+    .select('*')
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+export async function addCategory(category: Omit<Category, "id" | "createdAt" | "updatedAt">): Promise<Category> {
+  const { data, error } = await supabase
+    .from('categories')
+    .insert([{ ...category }])
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function updateCategory(id: string, updates: Partial<Omit<Category, "id" | "createdAt">>): Promise<Category | null> {
+  const { data, error } = await supabase
+    .from('categories')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteCategory(id: string): Promise<boolean> {
+  const { error } = await supabase.from('categories').delete().eq('id', id)
+  if (error) throw error
+  return true
+}
+
+// Products (updated to work with Supabase)
+export async function getProducts(): Promise<Product[]> {
+  const { data, error } = await supabase
+    .from('products')
+    .select(`
+      *,
+      categories!inner(*)
+    `)
+    .order('created_at', { ascending: false })
   
-  // Keep mock data for non-category features (until you migrate them)
-  private products: Product[] = [...mockProducts]
-  private stockEntries: StockEntry[] = [...mockStockEntries]
-  private stockMovements: StockMovement[] = [...mockStockMovements]
+  if (error) throw error
+  
+  // Map the data to match your frontend Product type
+  return (data || []).map(item => ({
+    id: item.id,
+    name: item.name,
+    description: item.description || '',
+    categoryId: item.category_id,
+    unitPrice: item.unit_price,
+    minStock: item.min_stock,
+    actualStock: item.actual_stock || 0,
+    createdAt: item.created_at,
+    updatedAt: item.updated_at,
+    category: item.categories ? {
+      id: item.categories.id,
+      name: item.categories.name,
+      description: item.categories.description || '',
+      createdAt: item.categories.created_at,
+      updatedAt: item.categories.updated_at
+    } : undefined
+  }))
+}
 
-  // Categories - Now using Supabase
-  async getCategories(): Promise<Category[]> {
-    try {
-      const { data, error } = await this.supabase
-        .from('categories')
-        .select('*')
-        .order('created_at', { ascending: true })
+export async function addProduct(product: Omit<Product, "id" | "createdAt" | "updatedAt">): Promise<Product> {
+  const { data, error } = await supabase
+    .from('products')
+    .insert([{ 
+      name: product.name,
+      description: product.description,
+      category_id: product.categoryId,
+      unit_price: product.unitPrice,
+      min_stock: product.minStock,
+      actual_stock: product.actualStock || 0
+    }])
+    .select(`
+      *,
+      category:categories(*)
+    `)
+    .single()
+  if (error) throw error
+  return data
+}
 
-      if (error) {
-        console.error('Error fetching categories:', error)
-        throw error
-      }
-
-      return data.map(row => ({
-        id: row.id,
-        name: row.name,
-        description: row.description,
-        color: row.color,
-        createdAt: new Date(row.created_at),
-        updatedAt: new Date(row.updated_at)
-      }))
-    } catch (error) {
-      console.error('Failed to fetch categories:', error)
-      throw error
-    }
+export async function updateProduct(id: string, updates: Partial<Omit<Product, "id" | "createdAt">>): Promise<Product | null> {
+  // Map the updates to match database column names
+  const dbUpdates: any = {
+    updated_at: new Date().toISOString()
   }
+  
+  if (updates.name) dbUpdates.name = updates.name
+  if (updates.description) dbUpdates.description = updates.description
+  if (updates.categoryId) dbUpdates.category_id = updates.categoryId
+  if (updates.unitPrice) dbUpdates.unit_price = updates.unitPrice
+  if (updates.minStock !== undefined) dbUpdates.min_stock = updates.minStock
+  if (updates.actualStock !== undefined) dbUpdates.actual_stock = updates.actualStock
 
-  async getCategoryById(id: string): Promise<Category | undefined> {
-    try {
-      const { data, error } = await this.supabase
-        .from('categories')
-        .select('*')
-        .eq('id', id)
-        .single()
+  const { data, error } = await supabase
+    .from('products')
+    .update(dbUpdates)
+    .eq('id', id)
+    .select(`
+      *,
+      category:categories(*)
+    `)
+    .single()
+  if (error) throw error
+  return data
+}
 
-      if (error) {
-        if (error.code === 'PGRST116') return undefined // Not found
-        console.error('Error fetching category:', error)
-        throw error
-      }
+export async function deleteProduct(id: string): Promise<boolean> {
+  const { error } = await supabase.from('products').delete().eq('id', id)
+  if (error) throw error
+  return true
+}
 
-      return {
-        id: data.id,
-        name: data.name,
-        description: data.description,
-        color: data.color,
-        createdAt: new Date(data.created_at),
-        updatedAt: new Date(data.updated_at)
-      }
-    } catch (error) {
-      console.error('Failed to fetch category:', error)
-      throw error
-    }
+// Stock Entries (updated to work with Supabase)
+export async function getStockEntries(): Promise<StockEntry[]> {
+  const { data, error } = await supabase
+    .from('stock_entries')
+    .select(`
+      *,
+      product:products(*)
+    `)
+    .order('date', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function getStockEntriesByProduct(productId: string): Promise<StockEntry[]> {
+  const { data, error } = await supabase
+    .from('stock_entries')
+    .select(`
+      *,
+      product:products(*)
+    `)
+    .eq('product_id', productId)
+    .order('date', { ascending: false })
+  
+  if (error) throw error
+  
+  // Transform snake_case to camelCase
+  return (data || []).map(entry => ({
+    id: entry.id,
+    productId: entry.product_id,
+    date: entry.date,
+    quantityIn: entry.quantity_in,
+    quantityOut: entry.quantity_out,
+    currentStock: entry.current_stock,
+    notes: entry.notes,
+    createdAt: entry.created_at,
+    updatedAt: entry.updated_at
+  }))
+}
+
+export async function addStockEntry(entry: Omit<StockEntry, "id" | "createdAt" | "updatedAt">): Promise<StockEntry> {
+  const { data, error } = await supabase
+    .from('stock_entries')
+    .insert([{ 
+      product_id: entry.productId,
+      date: entry.date,
+      quantity_in: entry.quantityIn,
+      quantity_out: entry.quantityOut,
+      current_stock: entry.currentStock,
+      notes: entry.notes
+    }])
+    .select(`
+      *,
+      product:products(*)
+    `)
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function updateStockEntry(id: string, updates: Partial<Omit<StockEntry, "id" | "createdAt">>): Promise<StockEntry | null> {
+  // Map the updates to match database column names
+  const dbUpdates: any = {
+    updated_at: new Date().toISOString()
   }
+  
+  if (updates.productId) dbUpdates.product_id = updates.productId
+  if (updates.date) dbUpdates.date = updates.date
+  if (updates.quantityIn !== undefined) dbUpdates.quantity_in = updates.quantityIn
+  if (updates.quantityOut !== undefined) dbUpdates.quantity_out = updates.quantityOut
+  if (updates.currentStock !== undefined) dbUpdates.current_stock = updates.currentStock
+  if (updates.notes) dbUpdates.notes = updates.notes
 
-  async createCategory(category: Omit<Category, "id" | "createdAt" | "updatedAt">): Promise<Category> {
-    try {
-      const { data, error } = await this.supabase
-        .from('categories')
-        .insert([
-          {
-            name: category.name,
-            description: category.description,
-            color: category.color
-          }
-        ])
-        .select()
-        .single()
+  const { data, error } = await supabase
+    .from('stock_entries')
+    .update(dbUpdates)
+    .eq('id', id)
+    .select(`
+      *,
+      product:products(*)
+    `)
+    .single()
+  if (error) throw error
+  return data
+}
 
-      if (error) {
-        console.error('Error creating category:', error)
-        throw error
-      }
+export async function deleteStockEntry(id: string): Promise<boolean> {
+  const { error } = await supabase.from('stock_entries').delete().eq('id', id)
+  if (error) throw error
+  return true
+}
 
-      return {
-        id: data.id,
-        name: data.name,
-        description: data.description,
-        color: data.color,
-        createdAt: new Date(data.created_at),
-        updatedAt: new Date(data.updated_at)
-      }
-    } catch (error) {
-      console.error('Failed to create category:', error)
-      throw error
-    }
-  }
+// Create product and initial stock entry together (updated for Supabase)
+export async function createProductWithStock(
+  productData: Omit<Product, "id" | "createdAt" | "updatedAt">,
+  initialStock = 0
+): Promise<{ product: Product; stockEntry: StockEntry }> {
+  // 1. Create product
+  const { data: product, error: productError } = await supabase
+    .from('products')
+    .insert([{
+      name: productData.name,
+      description: productData.description,
+      category_id: productData.categoryId,
+      unit_price: productData.unitPrice,
+      min_stock: productData.minStock,
+      actual_stock: initialStock
+    }])
+    .select(`
+      *,
+      category:categories(*)
+    `)
+    .single();
+  if (productError) throw productError;
 
-  async addCategory(category: Omit<Category, "id" | "createdAt" | "updatedAt">): Promise<Category> {
-    return this.createCategory(category)
-  }
+  // 2. Create initial stock entry
+  const { data: stockEntry, error: stockError } = await supabase
+    .from('stock_entries')
+    .insert([{
+      product_id: product.id,
+      date: new Date().toISOString().slice(0, 10),
+      quantity_in: initialStock,
+      quantity_out: 0,
+      current_stock: initialStock
+    }])
+    .select(`
+      *,
+      product:products(*)
+    `)
+    .single();
+  if (stockError) throw stockError;
 
-  async updateCategory(id: string, updates: Partial<Omit<Category, "id" | "createdAt">>): Promise<Category | null> {
-    try {
-      const { data, error } = await this.supabase
-        .from('categories')
-        .update({
-          name: updates.name,
-          description: updates.description,
-          color: updates.color,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id)
-        .select()
-        .single()
+  return { product, stockEntry };
+}
 
-      if (error) {
-        console.error('Error updating category:', error)
-        throw error
-      }
+// Dashboard Stats (updated to work with Supabase)
+export async function getDashboardStats() {
+  try {
+    // Get total categories from Supabase
+    const { count: totalCategories, error: categoriesError } = await supabase
+      .from('categories')
+      .select('*', { count: 'exact', head: true })
 
-      return {
-        id: data.id,
-        name: data.name,
-        description: data.description,
-        color: data.color,
-        createdAt: new Date(data.created_at),
-        updatedAt: new Date(data.updated_at)
-      }
-    } catch (error) {
-      console.error('Failed to update category:', error)
-      throw error
-    }
-  }
-
-  async deleteCategory(id: string): Promise<boolean> {
-    try {
-      // Check if category is used by any products (when you migrate products to Supabase)
-      // For now, checking local mock data
-      const productsUsingCategory = this.products.filter((product) => product.categoryId === id)
-      if (productsUsingCategory.length > 0) {
-        throw new Error("Cannot delete category that is being used by products")
-      }
-
-      const { error } = await this.supabase
-        .from('categories')
-        .delete()
-        .eq('id', id)
-
-      if (error) {
-        console.error('Error deleting category:', error)
-        throw error
-      }
-
-      return true
-    } catch (error) {
-      console.error('Failed to delete category:', error)
-      throw error
-    }
-  }
-
-  // Products - Still using mock data (migrate these later)
-  async getProducts(): Promise<Product[]> {
-    return this.products.map((product) => ({
-      ...product,
-      // This will need to be updated when you migrate categories
-      category: undefined, // You might want to fetch from Supabase here
-    }))
-  }
-
-  async getProductById(id: string): Promise<Product | undefined> {
-    const product = this.products.find((p) => p.id === id)
-    if (product) {
-      return {
-        ...product,
-        category: undefined, // You might want to fetch from Supabase here
-      }
-    }
-    return undefined
-  }
-
-  async createProduct(product: Omit<Product, "id" | "createdAt" | "updatedAt">): Promise<Product> {
-    const newProduct: Product = {
-      ...product,
-      id: Date.now().toString(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    }
-    this.products.push(newProduct)
-    return newProduct
-  }
-
-  async updateProduct(id: string, updates: Partial<Omit<Product, "id" | "createdAt">>): Promise<Product | null> {
-    const productIndex = this.products.findIndex((product) => product.id === id)
-    if (productIndex === -1) return null
-
-    this.products[productIndex] = {
-      ...this.products[productIndex],
-      ...updates,
-      updatedAt: new Date(),
-    }
-    return this.products[productIndex]
-  }
-
-  async deleteProduct(id: string): Promise<boolean> {
-    const productIndex = this.products.findIndex((product) => product.id === id)
-    if (productIndex === -1) return false
-
-    // Remove associated stock entries and movements
-    this.stockEntries = this.stockEntries.filter((entry) => entry.productId !== id)
-    this.stockMovements = this.stockMovements.filter((movement) => movement.productId !== id)
-
-    this.products.splice(productIndex, 1)
-    return true
-  }
-
-  // Stock Entries - Still using mock data
-  async getStockEntries(): Promise<StockEntry[]> {
-    return this.stockEntries.map((entry) => ({
-      ...entry,
-      product: this.products.find((p) => p.id === entry.productId),
-    }))
-  }
-
-  async createStockEntry(entry: Omit<StockEntry, "id" | "createdAt" | "updatedAt">): Promise<StockEntry> {
-    const newEntry: StockEntry = {
-      ...entry,
-      id: Date.now().toString(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    }
-    this.stockEntries.push(newEntry)
-    return newEntry
-  }
-
-  // Stock Movements - Still using mock data
-  async getStockMovements(): Promise<StockMovement[]> {
-    return this.stockMovements.map((movement) => ({
-      ...movement,
-      product: this.products.find((p) => p.id === movement.productId),
-    }))
-  }
-
-  async updateStockMovement(
-    productId: string,
-    date: Date,
-    field: "quantityIn" | "quantityOut",
-    newValue: number,
-  ): Promise<void> {
-    // Find existing movement for this product and date
-    const existingMovementIndex = this.stockMovements.findIndex(
-      (movement) => movement.productId === productId && movement.date.toDateString() === date.toDateString(),
-    )
-
-    const product = this.products.find((p) => p.id === productId)
-    if (!product) return
-
-    if (existingMovementIndex >= 0) {
-      // Update existing movement
-      const movement = this.stockMovements[existingMovementIndex]
-      if (field === "quantityIn" && movement.type === "in") {
-        movement.quantity = newValue
-        movement.totalValue = newValue * product.unitPrice
-      } else if (field === "quantityOut" && movement.type === "out") {
-        movement.quantity = newValue
-        movement.totalValue = newValue * product.unitPrice
-      }
-    } else if (newValue > 0) {
-      // Create new movement if value is greater than 0
-      const newMovement: StockMovement = {
-        id: Date.now().toString(),
-        productId,
-        type: field === "quantityIn" ? "in" : "out",
-        quantity: newValue,
-        unitPrice: product.unitPrice,
-        totalValue: newValue * product.unitPrice,
-        date: new Date(date),
-        reason: field === "quantityIn" ? "Ajustement entrée" : "Ajustement sortie",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }
-      this.stockMovements.push(newMovement)
+    if (categoriesError) {
+      console.error('Error counting categories:', categoriesError)
+      throw categoriesError
     }
 
-    // Update stock entry if exists
-    const stockEntryIndex = this.stockEntries.findIndex((entry) => entry.productId === productId)
-    if (stockEntryIndex >= 0) {
-      // Recalculate current stock based on all movements
-      const allMovements = this.stockMovements.filter((m) => m.productId === productId)
-      const totalIn = allMovements.filter((m) => m.type === "in").reduce((sum, m) => sum + m.quantity, 0)
-      const totalOut = allMovements.filter((m) => m.type === "out").reduce((sum, m) => sum + m.quantity, 0)
+    // Get total products from Supabase
+    const { count: totalProducts, error: productsError } = await supabase
+      .from('products')
+      .select('*', { count: 'exact', head: true })
 
-      this.stockEntries[stockEntryIndex].currentStock = totalIn - totalOut
-      this.stockEntries[stockEntryIndex].updatedAt = new Date()
-    }
-  }
-
-  // Dashboard Stats - Using mix of Supabase and mock data
-  async getDashboardStats(): Promise<DashboardStats> {
-    try {
-      // Get total categories from Supabase
-      const { count: totalCategories, error } = await this.supabase
-        .from('categories')
-        .select('*', { count: 'exact', head: true })
-
-      if (error) {
-        console.error('Error counting categories:', error)
-        throw error
-      }
-
-      const totalProducts = this.products.length
-
-      // Calculate current stock values (still using mock data)
-      const productStocks = new Map<string, number>()
-      this.stockEntries.forEach((entry) => {
-        productStocks.set(entry.productId, entry.currentStock)
-      })
-
-      let totalStockValue = 0
-      this.products.forEach((product) => {
-        const stock = productStocks.get(product.id) || 0
-        totalStockValue += stock * product.unitPrice
-      })
-
-      // Count low stock alerts
-      const lowStockAlerts = this.products.filter((product) => {
-        const currentStock = productStocks.get(product.id) || 0
-        return currentStock <= product.minStock
-      }).length
-
-      // Calculate daily movement (last 24h)
-      const yesterday = new Date()
-      yesterday.setDate(yesterday.getDate() - 1)
-
-      const recentMovements = this.stockMovements.filter((movement) => movement.date >= yesterday)
-      const dailyMovement = recentMovements.reduce((sum, movement) => sum + movement.totalValue, 0)
-
-      return {
-        totalProducts,
-        totalCategories: totalCategories || 0,
-        totalStockValue,
-        lowStockAlerts,
-        dailyMovement,
-        monthlyTrend: 5.2, // Mock trend percentage
-      }
-    } catch (error) {
-      console.error('Failed to get dashboard stats:', error)
-      throw error
-    }
-  }
-
-  // Financial Summary - Still using mock data
-  async getFinancialSummary(startDate: Date, endDate: Date): Promise<FinancialSummary[]> {
-    // Mock financial data for the date range
-    const summaries: FinancialSummary[] = []
-    const currentDate = new Date(startDate)
-
-    while (currentDate <= endDate) {
-      const dayMovements = this.stockMovements.filter(
-        (movement) => movement.date.toDateString() === currentDate.toDateString(),
-      )
-
-      const dailyMovement = dayMovements.reduce(
-        (sum, movement) => sum + (movement.type === "in" ? movement.totalValue : -movement.totalValue),
-        0,
-      )
-
-      summaries.push({
-        date: new Date(currentDate),
-        totalStockValue: Math.random() * 50000 + 20000, // Mock values
-        totalInvestment: Math.random() * 30000 + 15000,
-        dailyMovement,
-        profitLoss: dailyMovement * 0.2, // Mock 20% margin
-      })
-
-      currentDate.setDate(currentDate.getDate() + 1)
+    if (productsError) {
+      console.error('Error counting products:', productsError)
+      throw productsError
     }
 
-    return summaries
-  }
+    // Get products with their current stock for calculations
+    const { data: products, error: productDataError } = await supabase
+      .from('products')
+      .select('id, unit_price, min_stock, actual_stock')
 
-  async createProductWithStock(
-    productData: Omit<Product, "id" | "createdAt" | "updatedAt">,
-    initialStock = 0,
-  ): Promise<{ product: Product; stockEntry: StockEntry }> {
-    const product = await this.createProduct(productData)
-
-    const stockEntry = await this.createStockEntry({
-      productId: product.id,
-      currentStock: initialStock,
-      minStock: productData.minStock,
-      maxStock: productData.maxStock || 1000,
-      lastRestockDate: new Date(),
-    })
-
-    return { product, stockEntry }
-  }
-
-  async createStockEntry(entry: Omit<StockEntry, "id" | "createdAt" | "updatedAt">): Promise<StockEntry> {
-    const newEntry: StockEntry = {
-      ...entry,
-      id: Date.now().toString(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
+    if (productDataError) {
+      console.error('Error fetching product data:', productDataError)
+      throw productDataError
     }
-    this.stockEntries.push(newEntry)
-    return newEntry
-  }
 
-  async createProduct(product: Omit<Product, "id" | "createdAt" | "updatedAt">): Promise<Product> {
-    const newProduct: Product = {
-      ...product,
-      id: Date.now().toString(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
+    // Calculate total stock value
+    const totalStockValue = products?.reduce((sum, product) => {
+      return sum + (product.actual_stock * product.unit_price)
+    }, 0) || 0
+
+    // Count low stock alerts
+    const lowStockAlerts = products?.filter(product => 
+      product.actual_stock <= product.min_stock
+    ).length || 0
+
+    // Calculate daily movement (last 24h) from stock entries
+    const yesterday = new Date()
+    yesterday.setDate(yesterday.getDate() - 1)
+    const yesterdayStr = yesterday.toISOString().slice(0, 10)
+
+    const { data: recentEntries, error: entriesError } = await supabase
+      .from('stock_entries')
+      .select(`
+        quantity_in, 
+        quantity_out,
+        products!inner(unit_price)
+      `)
+      .gte('date', yesterdayStr)
+
+    if (entriesError) {
+      console.error('Error fetching recent stock entries:', entriesError)
+      throw entriesError
     }
-    this.products.push(newProduct)
-    return newProduct
+
+    const dailyMovement = recentEntries?.reduce((sum, entry) => {
+      const productPrice = entry.products?.[0]?.unit_price || 0
+      const netQuantity = entry.quantity_in - entry.quantity_out
+      return sum + (netQuantity * productPrice)
+    }, 0) || 0
+
+    return {
+      totalProducts: totalProducts || 0,
+      totalCategories: totalCategories || 0,
+      totalStockValue,
+      lowStockAlerts,
+      dailyMovement,
+      monthlyTrend: 5.2, // You can calculate this based on historical data later
+    }
+  } catch (error) {
+    console.error('Failed to get dashboard stats:', error)
+    throw error
   }
 }
 
-export const dataService = new DataService()
+// Financial Summary (updated to work with Supabase)
+export async function getFinancialSummary(startDate: Date, endDate: Date) {
+  try {
+    const startDateStr = startDate.toISOString().slice(0, 10)
+    const endDateStr = endDate.toISOString().slice(0, 10)
 
-// Category exports - now using Supabase
-export const addCategory = (category: Omit<Category, "id" | "createdAt" | "updatedAt">) =>
-  dataService.addCategory(category)
+    // Get stock entries for the date range with product prices
+    const { data: entries, error } = await supabase
+      .from('stock_entries')
+      .select(`
+        date,
+        quantity_in,
+        quantity_out,
+        current_stock,
+        products!inner(unit_price)
+      `)
+      .gte('date', startDateStr)
+      .lte('date', endDateStr)
+      .order('date', { ascending: true })
 
-export const updateCategory = (id: string, updates: Partial<Omit<Category, "id" | "createdAt">>) =>
-  dataService.updateCategory(id, updates)
+    if (error) {
+      console.error('Error fetching financial data:', error)
+      throw error
+    }
 
-export const deleteCategory = (id: string) => dataService.deleteCategory(id)
+    // Group entries by date and calculate daily summaries
+    const dailySummaries = new Map()
+    
+    entries?.forEach(entry => {
+      const date = entry.date
+      if (!dailySummaries.has(date)) {
+        dailySummaries.set(date, {
+          date: new Date(date),
+          totalStockValue: 0,
+          totalInvestment: 0,
+          dailyMovement: 0,
+          profitLoss: 0
+        })
+      }
+      
+      const summary = dailySummaries.get(date)
+      const unitPrice = entry.products?.[0]?.unit_price || 0
+      const netMovement = entry.quantity_in - entry.quantity_out
+      
+      summary.dailyMovement += netMovement * unitPrice
+      summary.totalStockValue += entry.current_stock * unitPrice
+      summary.totalInvestment += entry.quantity_in * unitPrice
+      summary.profitLoss += netMovement * unitPrice * 0.2 // Assuming 20% margin
+    })
 
-export const getCategories = () => dataService.getCategories()
-
-// Product exports - still using mock data
-export const createProductWithStock = (
-  productData: Omit<Product, "id" | "createdAt" | "updatedAt">,
-  initialStock?: number,
-) => dataService.createProductWithStock(productData, initialStock)
-
-export const updateProduct = (id: string, updates: Partial<Omit<Product, "id" | "createdAt">>) =>
-  dataService.updateProduct(id, updates)
-
-export const deleteProduct = (id: string) => dataService.deleteProduct(id)
-
-export const getDashboardStats = () => dataService.getDashboardStats()
-
-export const getFinancialSummary = (startDate: Date, endDate: Date) => 
-  dataService.getFinancialSummary(startDate, endDate)
+    return Array.from(dailySummaries.values())
+  } catch (error) {
+    console.error('Failed to get financial summary:', error)
+    throw error
+  }
+}

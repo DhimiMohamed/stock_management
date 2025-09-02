@@ -1,9 +1,10 @@
+// app\stock\page.tsx
 "use client"
 
 import { useState, useEffect } from "react"
 import type { Product } from "@/lib/types"
-import { dataService } from "@/lib/data-service"
-import { StockTable } from "@/components/stock/stock-table"
+import { getProducts } from "@/lib/data-service"
+import { ProductTable } from "@/components/stock/product-table"
 import { StockMovementForm } from "@/components/stock/stock-movement-form"
 import { StockAlerts } from "@/components/stock/stock-alerts"
 import { ProtectedRoute } from "@/components/auth/protected-route"
@@ -15,7 +16,7 @@ export default function StockPage() {
   useEffect(() => {
     const loadProducts = async () => {
       try {
-        const productsData = await dataService.getProducts()
+        const productsData = await getProducts()
         setProducts(productsData)
       } catch (error) {
         console.error("Erreur lors du chargement des produits:", error)
@@ -42,7 +43,7 @@ export default function StockPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           <div className="lg:col-span-3">
-            <StockTable
+            <ProductTable
               onAddStock={(productId) => {
                 // Could open the movement form with pre-selected product
                 console.log("Add stock for product:", productId)

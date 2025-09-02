@@ -1,10 +1,20 @@
+// components/stock/product-table.tsx
 "use client"
 
 import type React from "react"
 
 import { useState, useEffect } from "react"
 import type { Product, StockEntry, Category } from "@/lib/types"
-import { dataService } from "@/lib/data-service"
+import { 
+  getProducts, 
+  getCategories, 
+  getStockEntries, 
+  addProduct, 
+  updateProduct, 
+  deleteProduct,
+  createProductWithStock,
+  addStockEntry
+} from "@/lib/data-service"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -22,11 +32,11 @@ import {
 } from "@/components/ui/dialog"
 import { StockWeeklyView } from "./stock-weekly-view"
 
-interface StockTableProps {
+interface ProductTableProps {
   onAddStock?: (productId: string) => void
 }
 
-export function StockTable({ onAddStock }: StockTableProps) {
+export function ProductTable({ onAddStock }: ProductTableProps) {
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [stockEntries, setStockEntries] = useState<StockEntry[]>([])
@@ -44,7 +54,7 @@ export function StockTable({ onAddStock }: StockTableProps) {
     categoryId: "",
     unitPrice: "",
     minStock: "",
-    currentStock: "", // Added current stock field
+    actualStock: "", // Use actualStock instead of currentStock
   })
   const [newProduct, setNewProduct] = useState({
     name: "",
@@ -54,38 +64,40 @@ export function StockTable({ onAddStock }: StockTableProps) {
     initialStock: "",
   })
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [productsData, stockData, categoriesData] = await Promise.all([
-          dataService.getProducts(),
-          dataService.getStockEntries(),
-          dataService.getCategories(),
-        ])
-        setProducts(productsData)
-        setStockEntries(stockData)
-        setCategories(categoriesData)
-      } catch (error) {
-        console.error("Erreur lors du chargement des données:", error)
-      } finally {
-        setLoading(false)
-      }
+  const loadData = async () => {
+    try {
+      const [productsData, stockData, categoriesData] = await Promise.all([
+        getProducts(),
+        getStockEntries(),
+        getCategories(),
+      ])
+      setProducts(productsData)
+      setStockEntries(stockData)
+      setCategories(categoriesData)
+    } catch (error) {
+      console.error("Erreur lors du chargement des données:", error)
+    } finally {
+      setLoading(false)
     }
+  }
 
+  useEffect(() => {
     loadData()
   }, [])
 
-  const getCurrentStock = (productId: string): number => {
-    const latestEntry = stockEntries
-      .filter((entry) => entry.productId === productId)
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
-    return latestEntry?.currentStock || 0
+  // Get current stock from product's actualStock field, not from stock entries
+  const getCurrentStock = (product: Product): number => {
+    const stock = product.actualStock || 0
+    return isNaN(stock) ? 0 : stock
   }
 
   const getStockStatus = (product: Product, currentStock: number) => {
-    if (currentStock === 0) {
+    const validCurrentStock = isNaN(currentStock) ? 0 : currentStock
+    const validMinStock = isNaN(product.minStock) ? 0 : product.minStock
+    
+    if (validCurrentStock === 0) {
       return { status: "Rupture", variant: "destructive" as const }
-    } else if (currentStock <= product.minStock) {
+    } else if (validCurrentStock <= validMinStock) {
       return { status: "Stock faible", variant: "secondary" as const }
     } else {
       return { status: "En stock", variant: "default" as const }
@@ -101,8 +113,10 @@ export function StockTable({ onAddStock }: StockTableProps) {
     setSelectedProduct(product)
   }
 
-  const handleBackFromWeekly = () => {
+  const handleBackFromWeekly = async () => {
     setSelectedProduct(null)
+    // Refresh data when coming back from weekly view
+    await loadData()
   }
 
   const handleAddNewProduct = async () => {
@@ -115,16 +129,17 @@ export function StockTable({ onAddStock }: StockTableProps) {
       const productData = {
         name: newProduct.name,
         categoryId: newProduct.categoryId,
-        unitPrice: Number.parseFloat(newProduct.unitPrice),
-        minStock: Number.parseInt(newProduct.minStock),
+        unitPrice: Number.parseFloat(newProduct.unitPrice) || 0,
+        minStock: Number.parseInt(newProduct.minStock) || 0,
+        actualStock: newProduct.initialStock ? Number.parseInt(newProduct.initialStock) : 0,
+        description: "" // Add default description
       }
 
       const initialStock = newProduct.initialStock ? Number.parseInt(newProduct.initialStock) : 0
-      await dataService.createProductWithStock(productData, initialStock)
+      await createProductWithStock(productData, initialStock)
 
-      const [productsData, stockData] = await Promise.all([dataService.getProducts(), dataService.getStockEntries()])
-      setProducts(productsData)
-      setStockEntries(stockData)
+      // Reload data
+      await loadData()
 
       setNewProduct({
         name: "",
@@ -153,50 +168,51 @@ export function StockTable({ onAddStock }: StockTableProps) {
 
   const handleEditProduct = (product: Product, e: React.MouseEvent) => {
     e.stopPropagation()
-    const currentStock = getCurrentStock(product.id)
+    const currentStock = getCurrentStock(product)
     setEditingProduct(product.id)
     setEditProduct({
       name: product.name,
       categoryId: product.categoryId,
-      unitPrice: product.unitPrice.toString(),
-      minStock: product.minStock.toString(),
-      currentStock: currentStock.toString(), // Set current stock value
+      unitPrice: (product.unitPrice || 0).toString(),
+      minStock: (product.minStock || 0).toString(),
+      actualStock: currentStock.toString(),
     })
   }
 
   const handleSaveEdit = async (productId: string) => {
     try {
-      const updatedProduct = {
+      const originalProduct = products.find(p => p.id === productId)
+      if (!originalProduct) return
+
+      const updatedProductData = {
         name: editProduct.name,
         categoryId: editProduct.categoryId,
-        unitPrice: Number.parseFloat(editProduct.unitPrice),
-        minStock: Number.parseInt(editProduct.minStock),
+        unitPrice: Number.parseFloat(editProduct.unitPrice) || 0,
+        minStock: Number.parseInt(editProduct.minStock) || 0,
+        actualStock: Number.parseInt(editProduct.actualStock) || 0,
       }
 
-      // Update product details
-      await dataService.updateProduct(productId, updatedProduct)
+      // Update product
+      await updateProduct(productId, updatedProductData)
       
-      // Update current stock if it has changed
-      const newCurrentStock = Number.parseInt(editProduct.currentStock)
-      const originalCurrentStock = getCurrentStock(productId)
+      // If stock changed, create a stock entry
+      const newActualStock = Number.parseInt(editProduct.actualStock) || 0
+      const originalStock = getCurrentStock(originalProduct)
       
-      if (newCurrentStock !== originalCurrentStock) {
-        // Create a new stock entry with the updated current stock
+      if (newActualStock !== originalStock) {
         const stockEntry = {
           productId: productId,
-          currentStock: newCurrentStock,
-          date: new Date().toISOString(),
+          date: new Date().toISOString().slice(0, 10),
+          quantityIn: newActualStock > originalStock ? newActualStock - originalStock : 0,
+          quantityOut: newActualStock < originalStock ? originalStock - newActualStock : 0,
+          currentStock: newActualStock,
+          notes: "Ajustement manuel du stock"
         }
-        await dataService.createStockEntry(stockEntry)
+        // await addStockEntry(stockEntry)
       }
 
       // Reload data
-      const [productsData, stockData] = await Promise.all([
-        dataService.getProducts(),
-        dataService.getStockEntries()
-      ])
-      setProducts(productsData)
-      setStockEntries(stockData)
+      await loadData()
       setEditingProduct(null)
     } catch (error) {
       console.error("Erreur lors de la modification du produit:", error)
@@ -211,7 +227,7 @@ export function StockTable({ onAddStock }: StockTableProps) {
       categoryId: "",
       unitPrice: "",
       minStock: "",
-      currentStock: "",
+      actualStock: "",
     })
   }
 
@@ -224,9 +240,8 @@ export function StockTable({ onAddStock }: StockTableProps) {
     if (!deleteDialog.product) return
 
     try {
-      await dataService.deleteProduct(deleteDialog.product.id)
-      const productsData = await dataService.getProducts()
-      setProducts(productsData)
+      await deleteProduct(deleteDialog.product.id)
+      await loadData()
       setDeleteDialog({ open: false, product: null })
     } catch (error) {
       console.error("Erreur lors de la suppression du produit:", error)
@@ -257,7 +272,7 @@ export function StockTable({ onAddStock }: StockTableProps) {
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2">
               <Package className="h-5 w-5" />
-              Gestion du Stock
+              Gestion des Produits
             </CardTitle>
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-muted-foreground" />
@@ -293,8 +308,8 @@ export function StockTable({ onAddStock }: StockTableProps) {
             </TableHeader>
             <TableBody>
               {filteredProducts.map((product) => {
-                const currentStock = getCurrentStock(product.id)
-                const stockValue = currentStock * product.unitPrice
+                const currentStock = getCurrentStock(product)
+                const stockValue = currentStock * (product.unitPrice || 0)
                 const { status, variant } = getStockStatus(product, currentStock)
                 const isEditing = editingProduct === product.id
 
@@ -333,15 +348,15 @@ export function StockTable({ onAddStock }: StockTableProps) {
                           </SelectContent>
                         </Select>
                       ) : (
-                        product.category?.name
+                        product.category?.name || "Non définie"
                       )}
                     </TableCell>
                     <TableCell className="text-center">
                       {isEditing ? (
                         <Input
                           type="number"
-                          value={editProduct.currentStock}
-                          onChange={(e) => setEditProduct((prev) => ({ ...prev, currentStock: e.target.value }))}
+                          value={editProduct.actualStock}
+                          onChange={(e) => setEditProduct((prev) => ({ ...prev, actualStock: e.target.value }))}
                           onClick={(e) => e.stopPropagation()}
                         />
                       ) : (
@@ -357,7 +372,7 @@ export function StockTable({ onAddStock }: StockTableProps) {
                           onClick={(e) => e.stopPropagation()}
                         />
                       ) : (
-                        product.minStock
+                        product.minStock || 0
                       )}
                     </TableCell>
                     <TableCell>
@@ -370,18 +385,18 @@ export function StockTable({ onAddStock }: StockTableProps) {
                           onClick={(e) => e.stopPropagation()}
                         />
                       ) : (
-                        `${product.unitPrice.toFixed(2)} €`
+                        `${(product.unitPrice || 0).toFixed(2)} €`
                       )}
                     </TableCell>
                     <TableCell>
                       {isEditing 
-                        ? `${((Number.parseInt(editProduct.currentStock) || 0) * Number.parseFloat(editProduct.unitPrice || "0")).toFixed(2)} €`
-                        : `${stockValue.toFixed(2)} €`
+                        ? `${(((Number.parseInt(editProduct.actualStock) || 0) * (Number.parseFloat(editProduct.unitPrice) || 0)) || 0).toFixed(2)} €`
+                        : `${(isNaN(stockValue) ? 0 : stockValue).toFixed(2)} €`
                       }
                     </TableCell>
                     <TableCell>
                       <Badge variant={variant} className="flex items-center gap-1">
-                        {currentStock <= product.minStock && <AlertTriangle className="h-3 w-3" />}
+                        {currentStock <= (product.minStock || 0) && <AlertTriangle className="h-3 w-3" />}
                         {status}
                       </Badge>
                     </TableCell>
