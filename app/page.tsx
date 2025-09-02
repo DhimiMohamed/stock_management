@@ -1,3 +1,4 @@
+// app\page.tsx
 import { DashboardStatsCards } from "@/components/dashboard/dashboard-stats"
 import { RecentMovements } from "@/components/dashboard/recent-movements"
 import { QuickActions } from "@/components/dashboard/quick-actions"
@@ -13,15 +14,15 @@ export default function DashboardPage() {
           <p className="text-muted-foreground">Vue d'ensemble de votre gestion de stock et financière</p>
         </div>
 
-        <DashboardStatsCards />
+        {/* <DashboardStatsCards /> */}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
-            <RecentMovements />
+            {/* <RecentMovements /> */}
           </div>
           <div className="space-y-6">
-            <QuickActions />
-            <StockAlerts />
+            {/* <QuickActions />
+            <StockAlerts /> */}
           </div>
         </div>
       </div>

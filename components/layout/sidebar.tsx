@@ -1,3 +1,4 @@
+// components\layout\sidebar.tsx
 "use client"
 
 import { useState, useMemo, useCallback } from "react"

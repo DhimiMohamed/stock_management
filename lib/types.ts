@@ -1,5 +1,4 @@
-// Types pour l'application de gestion de stock et financière
-
+// lib\types.ts
 export interface Category {
   id: string
   name: string

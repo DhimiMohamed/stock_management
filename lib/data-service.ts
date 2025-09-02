@@ -166,17 +166,49 @@ export async function getStockEntriesByProduct(productId: string): Promise<Stock
   }))
 }
 
-export async function addStockEntry(entry: Omit<StockEntry, "id" | "createdAt" | "updatedAt">): Promise<StockEntry> {
+// Update the updateStockEntry function in data-service.ts:
+
+export async function updateStockEntry(id: string, updates: Partial<Omit<StockEntry, "id" | "createdAt">>): Promise<StockEntry | null> {
+  // Map the updates to match database column names
+  const dbUpdates: any = {
+    updated_at: new Date().toISOString()
+  }
+  
+  if (updates.productId) dbUpdates.product_id = updates.productId
+  if (updates.date) {
+    // Handle date properly - ensure it's stored as YYYY-MM-DD
+    let dateString: string;
+    
+    if (typeof updates.date === 'string') {
+      // If it's already in YYYY-MM-DD format, use as-is
+      if (/^\d{4}-\d{2}-\d{2}$/.test(updates.date)) {
+        dateString = updates.date;
+      } else {
+        // Parse and format to YYYY-MM-DD
+        const d = new Date(updates.date);
+        dateString = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      }
+    } else if (updates.date instanceof Date) {
+      // Format Date object to YYYY-MM-DD
+      const d = updates.date;
+      dateString = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    } else {
+      // Fallback
+      const d = new Date(updates.date as any);
+      dateString = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+    
+    dbUpdates.date = dateString;
+  }
+  if (updates.quantityIn !== undefined) dbUpdates.quantity_in = updates.quantityIn
+  if (updates.quantityOut !== undefined) dbUpdates.quantity_out = updates.quantityOut
+  if (updates.currentStock !== undefined) dbUpdates.current_stock = updates.currentStock
+  if (updates.notes !== undefined) dbUpdates.notes = updates.notes
+
   const { data, error } = await supabase
     .from('stock_entries')
-    .insert([{ 
-      product_id: entry.productId,
-      date: entry.date,
-      quantity_in: entry.quantityIn,
-      quantity_out: entry.quantityOut,
-      current_stock: entry.currentStock,
-      notes: entry.notes
-    }])
+    .update(dbUpdates)
+    .eq('id', id)
     .select(`
       *,
       product:products(*)
@@ -186,23 +218,40 @@ export async function addStockEntry(entry: Omit<StockEntry, "id" | "createdAt" |
   return data
 }
 
-export async function updateStockEntry(id: string, updates: Partial<Omit<StockEntry, "id" | "createdAt">>): Promise<StockEntry | null> {
-  // Map the updates to match database column names
-  const dbUpdates: any = {
-    updated_at: new Date().toISOString()
-  }
+// Update the addStockEntry function similarly:
+export async function addStockEntry(entry: Omit<StockEntry, "id" | "createdAt" | "updatedAt">): Promise<StockEntry> {
+  // Handle date properly
+  let dateString: string;
   
-  if (updates.productId) dbUpdates.product_id = updates.productId
-  if (updates.date) dbUpdates.date = updates.date
-  if (updates.quantityIn !== undefined) dbUpdates.quantity_in = updates.quantityIn
-  if (updates.quantityOut !== undefined) dbUpdates.quantity_out = updates.quantityOut
-  if (updates.currentStock !== undefined) dbUpdates.current_stock = updates.currentStock
-  if (updates.notes) dbUpdates.notes = updates.notes
+  if (typeof entry.date === 'string') {
+    // If it's already in YYYY-MM-DD format, use as-is
+    if (/^\d{4}-\d{2}-\d{2}$/.test(entry.date)) {
+      dateString = entry.date;
+    } else {
+      // Parse and format to YYYY-MM-DD
+      const d = new Date(entry.date);
+      dateString = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+  } else if (entry.date instanceof Date) {
+    // Format Date object to YYYY-MM-DD
+    const d = entry.date;
+    dateString = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  } else {
+    // Fallback
+    const d = new Date(entry.date as any);
+    dateString = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
 
   const { data, error } = await supabase
     .from('stock_entries')
-    .update(dbUpdates)
-    .eq('id', id)
+    .insert([{ 
+      product_id: entry.productId,
+      date: dateString,
+      quantity_in: entry.quantityIn,
+      quantity_out: entry.quantityOut,
+      current_stock: entry.currentStock,
+      notes: entry.notes
+    }])
     .select(`
       *,
       product:products(*)

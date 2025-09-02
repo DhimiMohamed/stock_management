@@ -58,8 +58,8 @@ export function StockMovementForm({ products, onMovementAdded }: StockMovementFo
         quantityIn: formData.type === "in" ? quantity : 0,
         quantityOut: formData.type === "out" ? quantity : 0,
         currentStock: newStock,
-        unitPrice,
-        totalValue: newStock * unitPrice,
+        // unitPrice,
+        // totalValue: newStock * unitPrice,
         notes: formData.notes,
       })
 

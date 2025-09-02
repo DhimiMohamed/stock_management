@@ -1,9 +1,10 @@
+// components\auth\protected-route.tsx
 "use client"
 
 import type React from "react"
 
 import { useAuth } from "./auth-context"
-import { LoginForm } from "./login-form"
+import { SupabaseLoginForm } from "./supabase-login-form"
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -25,7 +26,7 @@ export function ProtectedRoute({ children, requireAdmin = false }: ProtectedRout
   }
 
   if (!isAuthenticated) {
-    return <LoginForm />
+    return <SupabaseLoginForm />
   }
 
   if (requireAdmin && !isAdmin) {

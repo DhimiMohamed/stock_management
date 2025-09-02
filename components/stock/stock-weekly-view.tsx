@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ChevronLeft, ChevronRight, ArrowLeft, Save, Plus } from "lucide-react"
+import { ChevronLeft, ChevronRight, ArrowLeft, Save, Plus, Edit, Check, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 
 interface StockWeeklyViewProps {
@@ -33,10 +33,11 @@ interface DayMovement {
   notes: string
 }
 
-interface EditingCell {
+interface EditingRow {
   dayIndex: number
-  field: "quantityIn" | "quantityOut" | "notes"
-  value: string
+  quantityIn: string
+  quantityOut: string
+  notes: string
 }
 
 export function StockWeeklyView({ product, onBack }: StockWeeklyViewProps) {
@@ -44,36 +45,50 @@ export function StockWeeklyView({ product, onBack }: StockWeeklyViewProps) {
   const [weeklyData, setWeeklyData] = useState<DayMovement[]>([])
   const [stockEntries, setStockEntries] = useState<StockEntry[]>([])
   const [loading, setLoading] = useState(true)
-  const [editingCell, setEditingCell] = useState<EditingCell | null>(null)
+  const [editingRow, setEditingRow] = useState<EditingRow | null>(null)
   const [saving, setSaving] = useState(false)
 
+  // Fixed date normalization function
+  const normalizeDate = (date: Date | string): string => {
+    let d: Date
+    
+    if (typeof date === 'string') {
+      // If it's already in YYYY-MM-DD format, return as-is
+      if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return date
+      }
+      d = new Date(date)
+    } else {
+      d = new Date(date)
+    }
+    
+    // Use local date to avoid timezone shifts
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    
+    return `${year}-${month}-${day}`
+  }
+
+  // Fixed week dates function
   const getWeekDates = (date: Date) => {
     const week = []
     const startOfWeek = new Date(date)
     const day = startOfWeek.getDay()
     const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1) // Monday as first day
+    
+    // Set to the start of the week, keeping local timezone
     startOfWeek.setDate(diff)
-    startOfWeek.setHours(0, 0, 0, 0) // Normalize to start of day
+    startOfWeek.setHours(0, 0, 0, 0) // Normalize to start of day in LOCAL timezone
 
     for (let i = 0; i < 7; i++) {
-      const day = new Date(startOfWeek)
-      day.setDate(startOfWeek.getDate() + i)
-      day.setHours(0, 0, 0, 0) // Normalize to start of day
-      week.push(day)
+      const dayDate = new Date(startOfWeek)
+      dayDate.setDate(startOfWeek.getDate() + i)
+      dayDate.setHours(0, 0, 0, 0) // Keep in local timezone
+      week.push(dayDate)
     }
     return week
   }
-
-  const normalizeDate = (date: Date | string): string => {
-  const d = typeof date === 'string' ? new Date(date) : date
-  
-  // Convert to local date string in YYYY-MM-DD format
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  
-  return `${year}-${month}-${day}`
-}
 
   const loadWeeklyData = async () => {
     setLoading(true)
@@ -196,28 +211,21 @@ export function StockWeeklyView({ product, onBack }: StockWeeklyViewProps) {
     return `${start} - ${end}`
   }
 
-  const handleCellClick = (dayIndex: number, field: "quantityIn" | "quantityOut" | "notes", e?: React.MouseEvent) => {
-    if (e) {
-      e.stopPropagation()
-      e.preventDefault()
-    }
-    
-    const currentValue = field === "notes" 
-      ? weeklyData[dayIndex][field] 
-      : weeklyData[dayIndex][field].toString()
-    
-    setEditingCell({
+  const handleEditRow = (dayIndex: number) => {
+    const dayData = weeklyData[dayIndex]
+    setEditingRow({
       dayIndex,
-      field,
-      value: currentValue,
+      quantityIn: dayData.quantityIn.toString(),
+      quantityOut: dayData.quantityOut.toString(),
+      notes: dayData.notes || ""
     })
   }
 
-  const handleInputChange = (value: string) => {
-    if (editingCell) {
-      setEditingCell({
-        ...editingCell,
-        value,
+  const handleInputChange = (field: "quantityIn" | "quantityOut" | "notes", value: string) => {
+    if (editingRow) {
+      setEditingRow({
+        ...editingRow,
+        [field]: value
       })
     }
   }
@@ -247,35 +255,24 @@ export function StockWeeklyView({ product, onBack }: StockWeeklyViewProps) {
     return Math.max(0, previousStock + netBalance)
   }
 
+  // Fixed handleSaveEdit function
   const handleSaveEdit = async () => {
-    if (!editingCell || saving) return
+    if (!editingRow || saving) return
 
     setSaving(true)
     try {
+      const dayData = weeklyData[editingRow.dayIndex]
+      // Create a proper date string for the database
+      const dateString = normalizeDate(dayData.date)
 
-      const dayData = weeklyData[editingCell.dayIndex]
-      // Use the actual Date object for the date property
-      const dateObj = dayData.date
+      const updatedQuantityIn = Math.max(0, parseInt(editingRow.quantityIn) || 0)
+      const updatedQuantityOut = Math.max(0, parseInt(editingRow.quantityOut) || 0)
+      const updatedNotes = editingRow.notes || ""
 
-      let updatedQuantityIn = dayData.quantityIn
-      let updatedQuantityOut = dayData.quantityOut
-      let updatedNotes = dayData.notes
-
-      // Update the specific field with proper validation
-      if (editingCell.field === "quantityIn") {
-        const parsed = parseInt(editingCell.value) || 0
-        updatedQuantityIn = Math.max(0, parsed)
-      } else if (editingCell.field === "quantityOut") {
-        const parsed = parseInt(editingCell.value) || 0
-        updatedQuantityOut = Math.max(0, parsed)
-      } else if (editingCell.field === "notes") {
-        updatedNotes = editingCell.value || ""
-      }
-
-      const newCurrentStock = calculateNewStock(editingCell.dayIndex, updatedQuantityIn, updatedQuantityOut)
+      const newCurrentStock = calculateNewStock(editingRow.dayIndex, updatedQuantityIn, updatedQuantityOut)
 
       console.log("Saving entry:", {
-        date: dateObj,
+        date: dateString, // Use string instead of Date object
         quantityIn: updatedQuantityIn,
         quantityOut: updatedQuantityOut,
         currentStock: newCurrentStock,
@@ -289,13 +286,13 @@ export function StockWeeklyView({ product, onBack }: StockWeeklyViewProps) {
           quantityOut: updatedQuantityOut,
           currentStock: newCurrentStock,
           notes: updatedNotes,
-          date: dateObj
+          date: dateString // Pass as string
         })
       } else {
         // Create new stock entry
         await addStockEntry({
           productId: product.id,
-          date: dateObj,
+          date: dateString, // Pass as string
           quantityIn: updatedQuantityIn,
           quantityOut: updatedQuantityOut,
           currentStock: newCurrentStock,
@@ -304,9 +301,8 @@ export function StockWeeklyView({ product, onBack }: StockWeeklyViewProps) {
       }
 
       // Update product's actual stock to reflect the latest changes
-      // Find the most recent entry after this save
       const allDatesInWeek = getWeekDates(currentWeek).map(d => normalizeDate(d))
-      const currentDateIndex = allDatesInWeek.indexOf(normalizeDate(dateObj))
+      const currentDateIndex = allDatesInWeek.indexOf(dateString)
       
       // If this is the last entry of the week, or the most recent entry, update product stock
       const hasLaterEntries = weeklyData.slice(currentDateIndex + 1).some(day => day.stockEntry)
@@ -316,13 +312,17 @@ export function StockWeeklyView({ product, onBack }: StockWeeklyViewProps) {
 
       // Reload data to reflect changes
       await loadWeeklyData()
+      setEditingRow(null)
     } catch (error) {
       console.error("Error saving stock entry:", error)
       alert("Erreur lors de la sauvegarde")
     } finally {
       setSaving(false)
-      setEditingCell(null)
     }
+  }
+
+  const handleCancelEdit = () => {
+    setEditingRow(null)
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -331,74 +331,19 @@ export function StockWeeklyView({ product, onBack }: StockWeeklyViewProps) {
       handleSaveEdit()
     } else if (e.key === "Escape") {
       e.preventDefault()
-      setEditingCell(null)
+      handleCancelEdit()
     }
   }
 
-  const handleBlur = () => {
-    // Add a small delay to allow clicking save button
-    setTimeout(() => {
-      if (editingCell) {
-        handleSaveEdit()
-      }
-    }, 150)
-  }
-
-  const renderEditableCell = (
-    dayIndex: number,
-    field: "quantityIn" | "quantityOut" | "notes",
-    value: number | string,
-    colorClass: string,
-  ) => {
-    const isEditing = editingCell?.dayIndex === dayIndex && editingCell?.field === field
-
-    if (isEditing) {
-      return (
-        <Input
-          type={field === "notes" ? "text" : "number"}
-          value={editingCell.value}
-          onChange={(e) => handleInputChange(e.target.value)}
-          onKeyDown={handleKeyPress}
-          onBlur={handleBlur}
-          className={`${field === "notes" ? "w-full" : "w-20"} h-8 text-center`}
-          autoFocus
-          min={field !== "notes" ? "0" : undefined}
-          placeholder={field === "notes" ? "Ajouter une note..." : "0"}
-          onClick={(e) => e.stopPropagation()}
-        />
-      )
-    }
-
-    if (field === "notes") {
-      return (
-        <div
-          className="cursor-pointer hover:bg-gray-100 rounded px-2 py-1 transition-colors text-sm min-h-[32px] flex items-center"
-          onClick={(e) => handleCellClick(dayIndex, field, e)}
-        >
-          {value || "Cliquer pour ajouter une note..."}
-        </div>
-      )
-    }
-
-    return (
-      <div
-        className={`cursor-pointer hover:bg-gray-100 rounded px-2 py-1 transition-colors ${colorClass} min-h-[32px] flex items-center justify-center`}
-        onClick={(e) => handleCellClick(dayIndex, field, e)}
-      >
-        {(value as number) > 0 ? (field === "quantityIn" ? `+${value}` : `-${value}`) : "—"}
-      </div>
-    )
-  }
-
+  // Fixed addQuickEntry function
   const addQuickEntry = async (dayIndex: number, type: 'in' | 'out', amount: number) => {
     if (saving) return
     
     setSaving(true)
     try {
-
       const dayData = weeklyData[dayIndex]
-      // Use the actual Date object for the date property
-      const dateObj = dayData.date
+      // Create a proper date string for the database
+      const dateString = normalizeDate(dayData.date)
 
       const newQuantityIn = dayData.quantityIn + (type === 'in' ? amount : 0)
       const newQuantityOut = dayData.quantityOut + (type === 'out' ? amount : 0)
@@ -412,12 +357,12 @@ export function StockWeeklyView({ product, onBack }: StockWeeklyViewProps) {
           quantityOut: newQuantityOut,
           currentStock: newCurrentStock,
           notes: dayData.notes,
-          date: dateObj
+          date: dateString // Pass as string
         })
       } else {
         await addStockEntry({
           productId: product.id,
-          date: dateObj,
+          date: dateString, // Pass as string
           quantityIn: newQuantityIn,
           quantityOut: newQuantityOut,
           currentStock: newCurrentStock,
@@ -427,7 +372,7 @@ export function StockWeeklyView({ product, onBack }: StockWeeklyViewProps) {
 
       // Update product's actual stock if this is the most recent entry
       const allDatesInWeek = getWeekDates(currentWeek).map(d => normalizeDate(d))
-      const currentDateIndex = allDatesInWeek.indexOf(normalizeDate(dateObj))
+      const currentDateIndex = allDatesInWeek.indexOf(dateString)
       const hasLaterEntries = weeklyData.slice(currentDateIndex + 1).some(day => day.stockEntry)
       if (!hasLaterEntries) {
         await updateProduct(product.id, { actualStock: newCurrentStock })
@@ -538,58 +483,145 @@ export function StockWeeklyView({ product, onBack }: StockWeeklyViewProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {weeklyData.map((day, index) => (
-                <TableRow key={index} className={day.stockEntry ? "bg-blue-50/50" : ""}>
-                  <TableCell className="font-medium">{formatDate(day.date)}</TableCell>
-                  <TableCell className="text-center">
-                    {renderEditableCell(index, "quantityIn", day.quantityIn, "text-green-600")}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {renderEditableCell(index, "quantityOut", day.quantityOut, "text-red-600")}
-                  </TableCell>
-                  <TableCell
-                    className={`text-center font-medium ${
-                      day.netBalance > 0 ? "text-green-600" : day.netBalance < 0 ? "text-red-600" : "text-gray-500"
-                    }`}
-                  >
-                    {day.netBalance !== 0 ? (day.netBalance > 0 ? `+${day.netBalance}` : day.netBalance) : "—"}
-                  </TableCell>
-                  <TableCell className="text-center font-medium">
-                    {day.currentStock}
-                  </TableCell>
-                  <TableCell className="max-w-48">
-                    {renderEditableCell(index, "notes", day.notes, "text-gray-600")}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <div className="flex gap-1 justify-center">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          addQuickEntry(index, 'in', 1)
-                        }}
-                        disabled={saving}
-                        className="text-green-600 hover:text-green-700"
-                      >
-                        <Plus className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          addQuickEntry(index, 'out', 1)
-                        }}
-                        disabled={saving}
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        -1
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {weeklyData.map((day, index) => {
+                const isEditing = editingRow?.dayIndex === index
+                
+                return (
+                  <TableRow key={index} className={day.stockEntry ? "bg-blue-50/50" : ""}>
+                    <TableCell className="font-medium">{formatDate(day.date)}</TableCell>
+                    
+                    {/* Quantity In */}
+                    <TableCell className="text-center">
+                      {isEditing ? (
+                        <Input
+                          type="number"
+                          value={editingRow.quantityIn}
+                          onChange={(e) => handleInputChange("quantityIn", e.target.value)}
+                          onKeyDown={handleKeyPress}
+                          className="w-20 text-center"
+                          min="0"
+                          placeholder="0"
+                        />
+                      ) : (
+                        <div className={`${day.quantityIn > 0 ? "text-green-600" : "text-gray-500"} min-h-[32px] flex items-center justify-center`}>
+                          {day.quantityIn > 0 ? `+${day.quantityIn}` : "—"}
+                        </div>
+                      )}
+                    </TableCell>
+                    
+                    {/* Quantity Out */}
+                    <TableCell className="text-center">
+                      {isEditing ? (
+                        <Input
+                          type="number"
+                          value={editingRow.quantityOut}
+                          onChange={(e) => handleInputChange("quantityOut", e.target.value)}
+                          onKeyDown={handleKeyPress}
+                          className="w-20 text-center"
+                          min="0"
+                          placeholder="0"
+                        />
+                      ) : (
+                        <div className={`${day.quantityOut > 0 ? "text-red-600" : "text-gray-500"} min-h-[32px] flex items-center justify-center`}>
+                          {day.quantityOut > 0 ? `-${day.quantityOut}` : "—"}
+                        </div>
+                      )}
+                    </TableCell>
+                    
+                    {/* Net Balance */}
+                    <TableCell
+                      className={`text-center font-medium ${
+                        day.netBalance > 0 ? "text-green-600" : day.netBalance < 0 ? "text-red-600" : "text-gray-500"
+                      }`}
+                    >
+                      {day.netBalance !== 0 ? (day.netBalance > 0 ? `+${day.netBalance}` : day.netBalance) : "—"}
+                    </TableCell>
+                    
+                    {/* Current Stock */}
+                    <TableCell className="text-center font-medium">
+                      {day.currentStock}
+                    </TableCell>
+                    
+                    {/* Notes */}
+                    <TableCell className="max-w-48">
+                      {isEditing ? (
+                        <Input
+                          type="text"
+                          value={editingRow.notes}
+                          onChange={(e) => handleInputChange("notes", e.target.value)}
+                          onKeyDown={handleKeyPress}
+                          placeholder="Ajouter une note..."
+                        />
+                      ) : (
+                        <div className="text-sm min-h-[32px] flex items-center">
+                          {day.notes || "—"}
+                        </div>
+                      )}
+                    </TableCell>
+                    
+                    {/* Actions */}
+                    <TableCell className="text-center">
+                      {isEditing ? (
+                        <div className="flex gap-1 justify-center">
+                          <Button
+                            size="sm"
+                            onClick={handleSaveEdit}
+                            disabled={saving}
+                            className="text-green-600 hover:text-green-700"
+                          >
+                            <Check className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={handleCancelEdit}
+                            disabled={saving}
+                            className="text-gray-600 hover:text-gray-700"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex gap-1 justify-center">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleEditRow(index)}
+                            disabled={saving}
+                            className="text-blue-600 hover:text-blue-700"
+                          >
+                            <Edit className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              addQuickEntry(index, 'in', 1)
+                            }}
+                            disabled={saving}
+                            className="text-green-600 hover:text-green-700"
+                          >
+                            <Plus className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              addQuickEntry(index, 'out', 1)
+                            }}
+                            disabled={saving}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            -1
+                          </Button>
+                        </div>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
             </TableBody>
           </Table>
 
