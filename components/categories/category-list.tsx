@@ -1,7 +1,7 @@
-// components\categories\category-list.tsx
+// components/categories/category-list.tsx
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -20,8 +20,13 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Tags, Edit, Trash2, Plus, Loader2 } from "lucide-react"
-import { getCategories, addCategory, updateCategory, deleteCategory } from "@/lib/data-service"
 import type { Category } from "@/lib/types"
+import {
+  useCategories,
+  useAddCategory,
+  useUpdateCategory,
+  useDeleteCategory,
+} from "@/lib/swr/category-service"
 
 const categoryColors = [
   { name: "Bleu", value: "bg-blue-100 text-blue-800 border-blue-200", hex: "#3B82F6" },
@@ -35,11 +40,14 @@ const categoryColors = [
 ]
 
 export function CategoryList() {
-  const [categories, setCategories] = useState<Category[]>([])
+  const { categories, isLoading, isError } = useCategories()
+  const { add } = useAddCategory()
+  const { update } = useUpdateCategory()
+  const { remove } = useDeleteCategory()
+
   const [editingCategory, setEditingCategory] = useState<Category | null>(null)
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [formData, setFormData] = useState({
@@ -48,41 +56,21 @@ export function CategoryList() {
     color: categoryColors[0].hex,
   })
 
-  const fetchCategories = async () => {
-    try {
-      setIsLoading(true)
-      setError(null)
-      const categoriesData = await getCategories()
-      setCategories(categoriesData)
-    } catch (error) {
-      console.error('Error fetching categories:', error)
-      setError('Erreur lors du chargement des catégories')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchCategories()
-  }, [])
-
   const handleAddCategory = async () => {
     if (!formData.name.trim()) return
-    
     try {
       setIsSubmitting(true)
       setError(null)
-      await addCategory({
+      await add({
         name: formData.name.trim(),
         description: formData.description.trim() || undefined,
         color: formData.color,
       })
-      await fetchCategories()
-      setFormData({ name: "", description: "", color: categoryColors[0].hex })
+      resetForm()
       setIsAddDialogOpen(false)
-    } catch (error) {
-      console.error('Error adding category:', error)
-      setError('Erreur lors de l\'ajout de la catégorie')
+    } catch (err) {
+      console.error("Error adding category:", err)
+      setError("Erreur lors de l'ajout de la catégorie")
     } finally {
       setIsSubmitting(false)
     }
@@ -90,21 +78,19 @@ export function CategoryList() {
 
   const handleEditCategory = async () => {
     if (!editingCategory || !formData.name.trim()) return
-    
     try {
       setIsSubmitting(true)
       setError(null)
-      await updateCategory(editingCategory.id, {
+      await update(editingCategory.id, {
         name: formData.name.trim(),
         description: formData.description.trim() || undefined,
         color: formData.color,
       })
-      await fetchCategories()
-      setEditingCategory(null)
+      resetForm()
       setIsEditDialogOpen(false)
-    } catch (error) {
-      console.error('Error updating category:', error)
-      setError('Erreur lors de la modification de la catégorie')
+    } catch (err) {
+      console.error("Error updating category:", err)
+      setError("Erreur lors de la modification de la catégorie")
     } finally {
       setIsSubmitting(false)
     }
@@ -113,11 +99,10 @@ export function CategoryList() {
   const handleDeleteCategory = async (categoryId: string) => {
     try {
       setError(null)
-      await deleteCategory(categoryId)
-      await fetchCategories()
-    } catch (error) {
-      console.error("Error deleting category:", error)
-      setError('Erreur lors de la suppression de la catégorie')
+      await remove(categoryId)
+    } catch (err) {
+      console.error("Error deleting category:", err)
+      setError("Erreur lors de la suppression de la catégorie")
     }
   }
 
@@ -138,7 +123,7 @@ export function CategoryList() {
   }
 
   const getColorClass = (colorHex: string) => {
-    const colorObj = categoryColors.find(c => c.hex === colorHex)
+    const colorObj = categoryColors.find((c) => c.hex === colorHex)
     return colorObj?.value || categoryColors[0].value
   }
 
@@ -148,6 +133,16 @@ export function CategoryList() {
         <CardContent className="flex items-center justify-center py-8">
           <Loader2 className="h-8 w-8 animate-spin" />
           <span className="ml-2">Chargement des catégories...</span>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (isError) {
+    return (
+      <Card>
+        <CardContent className="text-center py-8 text-red-600">
+          Erreur lors du chargement des catégories.
         </CardContent>
       </Card>
     )
@@ -183,7 +178,9 @@ export function CategoryList() {
                   <Input
                     id="name"
                     value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, name: e.target.value })
+                    }
                     placeholder="Nom de la catégorie"
                     disabled={isSubmitting}
                   />
@@ -193,7 +190,9 @@ export function CategoryList() {
                   <Input
                     id="description"
                     value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, description: e.target.value })
+                    }
                     placeholder="Description (optionnel)"
                     disabled={isSubmitting}
                   />
@@ -205,10 +204,14 @@ export function CategoryList() {
                       <button
                         key={color.name}
                         type="button"
-                        onClick={() => setFormData({ ...formData, color: color.hex })}
+                        onClick={() =>
+                          setFormData({ ...formData, color: color.hex })
+                        }
                         disabled={isSubmitting}
                         className={`p-2 rounded-lg border-2 ${
-                          formData.color === color.hex ? "border-gray-800" : "border-gray-200"
+                          formData.color === color.hex
+                            ? "border-gray-800"
+                            : "border-gray-200"
                         }`}
                       >
                         <div
@@ -220,8 +223,8 @@ export function CategoryList() {
                     ))}
                   </div>
                 </div>
-                <Button 
-                  onClick={handleAddCategory} 
+                <Button
+                  onClick={handleAddCategory}
                   className="w-full"
                   disabled={isSubmitting || !formData.name.trim()}
                 >
@@ -231,7 +234,7 @@ export function CategoryList() {
                       Ajout en cours...
                     </>
                   ) : (
-                    'Ajouter'
+                    "Ajouter"
                   )}
                 </Button>
               </div>
@@ -245,7 +248,7 @@ export function CategoryList() {
             {error}
           </div>
         )}
-        
+
         {categories.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             Aucune catégorie trouvée. Ajoutez votre première catégorie !
@@ -253,23 +256,40 @@ export function CategoryList() {
         ) : (
           <div className="grid gap-4">
             {categories.map((category) => (
-              <div key={category.id} className="flex items-center justify-between p-4 border rounded-lg">
+              <div
+                key={category.id}
+                className="flex items-center justify-between p-4 border rounded-lg"
+              >
                 <div className="flex items-center gap-3">
-                  <Badge className={getColorClass(category.color || categoryColors[0].hex)}>
+                  <Badge
+                    className={getColorClass(
+                      category.color || categoryColors[0].hex
+                    )}
+                  >
                     {category.name}
                   </Badge>
                   <div>
                     <p className="font-medium">{category.name}</p>
-                    {category.description && <p className="text-sm text-muted-foreground">{category.description}</p>}
+                    {category.description && (
+                      <p className="text-sm text-muted-foreground">
+                        {category.description}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <Dialog
-                    open={isEditDialogOpen && editingCategory?.id === category.id}
+                    open={
+                      isEditDialogOpen && editingCategory?.id === category.id
+                    }
                     onOpenChange={setIsEditDialogOpen}
                   >
                     <DialogTrigger asChild>
-                      <Button variant="outline" size="sm" onClick={() => openEditDialog(category)}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openEditDialog(category)}
+                      >
                         <Edit className="h-4 w-4" />
                       </Button>
                     </DialogTrigger>
@@ -288,7 +308,9 @@ export function CategoryList() {
                           <Input
                             id="edit-name"
                             value={formData.name}
-                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                            onChange={(e) =>
+                              setFormData({ ...formData, name: e.target.value })
+                            }
                             placeholder="Nom de la catégorie"
                             disabled={isSubmitting}
                           />
@@ -298,7 +320,12 @@ export function CategoryList() {
                           <Input
                             id="edit-description"
                             value={formData.description}
-                            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                description: e.target.value,
+                              })
+                            }
                             placeholder="Description (optionnel)"
                             disabled={isSubmitting}
                           />
@@ -310,10 +337,14 @@ export function CategoryList() {
                               <button
                                 key={color.name}
                                 type="button"
-                                onClick={() => setFormData({ ...formData, color: color.hex })}
+                                onClick={() =>
+                                  setFormData({ ...formData, color: color.hex })
+                                }
                                 disabled={isSubmitting}
                                 className={`p-2 rounded-lg border-2 ${
-                                  formData.color === color.hex ? "border-gray-800" : "border-gray-200"
+                                  formData.color === color.hex
+                                    ? "border-gray-800"
+                                    : "border-gray-200"
                                 }`}
                               >
                                 <div
@@ -325,8 +356,8 @@ export function CategoryList() {
                             ))}
                           </div>
                         </div>
-                        <Button 
-                          onClick={handleEditCategory} 
+                        <Button
+                          onClick={handleEditCategory}
                           className="w-full"
                           disabled={isSubmitting || !formData.name.trim()}
                         >
@@ -336,7 +367,7 @@ export function CategoryList() {
                               Mise à jour...
                             </>
                           ) : (
-                            'Mettre à jour'
+                            "Mettre à jour"
                           )}
                         </Button>
                       </div>
@@ -352,8 +383,8 @@ export function CategoryList() {
                       <AlertDialogHeader>
                         <AlertDialogTitle>Supprimer la catégorie</AlertDialogTitle>
                         <AlertDialogDescription>
-                          Êtes-vous sûr de vouloir supprimer la catégorie "{category.name}" ? Cette action est
-                          irréversible.
+                          Êtes-vous sûr de vouloir supprimer la catégorie "
+                          {category.name}" ? Cette action est irréversible.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
